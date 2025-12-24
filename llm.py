@@ -1,6 +1,4 @@
-from typing import Any, Generator, List
-import os
-from dotenv import load_dotenv
+from typing import Generator
 from langchain_elasticsearch import ElasticsearchRetriever
 from langchain_groq import ChatGroq
 from elasticsearch import Elasticsearch
@@ -9,8 +7,6 @@ from langchain.messages import SystemMessage, AnyMessage
 from langsmith import traceable
 from langchain_core.output_parsers import StrOutputParser
 
-
-load_dotenv()
 
 _retriever = ElasticsearchRetriever(
     client=Elasticsearch(hosts=["http://localhost:9200"]),
@@ -31,8 +27,7 @@ _retriever = ElasticsearchRetriever(
     },
     content_field="content",
 )
-_llm = ChatGroq(
-    api_key=os.getenv("GROQ_API_KEY"), # type: ignore
+_llm_medium_reasoning = ChatGroq(
     model="openai/gpt-oss-120b",
     reasoning_effort="medium",
     temperature=0,
@@ -41,15 +36,14 @@ _query_translation_prompt = ChatPromptTemplate.from_messages(
     [
         SystemMessage(content="""You are an expert at query understanding and reformulation.
 
-Your task is to rewrite the user's original query into a single improved version that is clearer, more specific, and better optimized for high-quality search retrieval response.
+Task: Your task is to rewrite the user's original query into a single improved version that is clearer, more specific, and better optimized for high-quality AI responses and search retrieval.
 
 Instructions:
 - Preserve the original intent — do NOT change the meaning.
 - Remove ambiguity, vagueness, and unnecessary words.
 - Add helpful context or constraints ONLY if they are logically implied.
-- Do not answer the query; only reformulate it.
-
-Output the reformulation as a search-optimized version ideal for retrieval."""),
+- Add relevant synonyms or closely related terms for key words to improve search and retrieval performance (without changing meaning).
+- Do not answer the query; only reformulate it."""),
         HumanMessagePromptTemplate.from_template("Original query: {question}"),
     ]
 )
@@ -57,42 +51,25 @@ _final_prompt = ChatPromptTemplate.from_messages(
     [
         SystemMessage(content="""You are an Islamic knowledge assistant.
 
-Your role is to answer questions about Islam strictly based on the provided sources
-retrieved from Elasticsearch. You must not rely on memory, general knowledge,
-assumptions, or inference beyond what is explicitly stated in the sources.
+Task: Answer questions strictly and only using the provided sources. Do not rely on prior knowledge, assumptions, inference, or guesswork.
 
-Core Rules (Mandatory):
-- Use ONLY the provided retrieved sources as your knowledge base.
-- Do NOT add, infer, assume, or extrapolate information.
-- If the sources do not contain enough information to answer fully, say so clearly.
-- Never guess, speculate, or fill gaps.
-- Do not merge information from different sources unless they explicitly align.
-- Do not issue personal opinions or modern interpretations unless directly cited.
+Rules:
+- Use ONLY the retrieved sources.
+- Consider ONLY sources that are directly relevant to the question.
+- Do NOT add, infer, interpret, or extrapolate beyond the text.
+- If the sources are insufficient, clearly state that the question cannot be answered.
+- Do not issue opinions or fatwas unless explicitly stated in the sources.
+- Do not claim consensus unless explicitly mentioned.
 
-Scholarly Accuracy Rules:
-- Quote Qur’anic verses, Hadith, or scholarly opinions only if they appear verbatim
-  or clearly referenced in the sources.
-- Preserve wording and meaning exactly as presented.
-- If multiple scholarly views are present, list them separately without preference.
-- Do not claim consensus (ijmāʿ) unless explicitly stated in the sources.
+Scholarly Accuracy:
+- Quote Qur’an, Hadith, or scholars only if present in the sources.
+- Preserve wording and meaning exactly.
+- If multiple views exist, list them neutrally without preference.
 
-Answering Guidelines:
-- Begin by checking whether the retrieved sources are sufficient.
-- If sufficient, answer using clear, neutral, and respectful language.
-- Cite sources inline using the provided identifiers (e.g., [Source 1], [Hadith A]).
-- If insufficient, respond with:
-  "The provided sources do not contain enough information to answer this question."
-
-Prohibited Behavior:
-- No assumptions about the user’s intent, belief, or level of knowledge.
-- No reasoning beyond textual evidence.
-- No synthesis that introduces new meaning.
-- No religious verdicts (fatwas) unless explicitly labeled as such in the sources.
-
-Output Format:
-- Short direct answer (if possible)
-- Bullet points or paragraphs strictly tied to sources
-- Source citations after each factual claim"""),
+Answering:
+- Provide a concise, neutral answer.
+- Cite sources after each factual claim.
+- If no clear answer exists, say so explicitly."""),
         ("placeholder", "{history}"),  # Conversation history placeholder
         HumanMessagePromptTemplate.from_template("User question: {question}"),
         HumanMessagePromptTemplate.from_template("Retrieved sources: {context}"),
@@ -114,7 +91,7 @@ def _retrieved_docs_formatter(docs):
     return "\n\n".join(formatted_docs)
 _context_generator = (
     _query_translation_prompt
-    | _llm
+    | _llm_medium_reasoning
     | StrOutputParser()
     | _retriever
     | _retrieved_docs_formatter
@@ -126,7 +103,7 @@ _final_pipeline = (
         "history": lambda x: x["history"],
     }
     | _final_prompt
-    | _llm
+    | _llm_medium_reasoning
     | StrOutputParser()
 )
 
