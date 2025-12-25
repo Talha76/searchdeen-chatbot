@@ -6,10 +6,14 @@ from langchain_core.prompts import ChatPromptTemplate, HumanMessagePromptTemplat
 from langchain.messages import SystemMessage, AnyMessage
 from langsmith import traceable
 from langchain_core.output_parsers import StrOutputParser
+from dotenv import load_dotenv
+
+
+load_dotenv()
 
 
 _retriever = ElasticsearchRetriever(
-    client=Elasticsearch(hosts=["http://localhost:9200"]),
+    client=Elasticsearch(hosts=["https://elasticsearchgwer123.gtaf.org/"]),
     index_name="*",
     body_func=lambda query: {
         "query": {
@@ -32,7 +36,7 @@ _llm_medium_reasoning = ChatGroq(
     reasoning_effort="medium",
     temperature=0,
 )
-_query_translation_prompt = ChatPromptTemplate.from_messages(
+_query_reformulation_prompt = ChatPromptTemplate.from_messages(
     [
         SystemMessage(content="""You are an expert at query understanding and reformulation.
 
@@ -90,7 +94,7 @@ def _retrieved_docs_formatter(docs):
         formatted_docs.append(content)
     return "\n\n".join(formatted_docs)
 _context_generator = (
-    _query_translation_prompt
+    _query_reformulation_prompt
     | _llm_medium_reasoning
     | StrOutputParser()
     | _retriever
